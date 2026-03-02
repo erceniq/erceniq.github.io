@@ -66,6 +66,7 @@
       flex-direction: column;
       gap: var(--gap);
       position: relative;
+      overflow-anchor: none;
     }
 
     .task-item {
@@ -84,8 +85,8 @@
     }
 
     @keyframes slideIn {
-      from { opacity: 0; transform: translateY(-5px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
 
     .task-item:hover        { background: var(--surface-hover); border-color: var(--border); }
@@ -207,7 +208,7 @@
 <div class="container">
   <div id="task-list"></div>
 </div>
-<span class="version">v2.2</span>
+<span class="version">v2.4</span>
 
 <script>
   const STORAGE_KEY = 'tasks-v3';
