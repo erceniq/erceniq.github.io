@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tasks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1915;
+      --surface: #242320;
+      --surface-hover: #2b2a27;
+      --border: #35342f;
+      --border-subtle: #2c2b27;
+      --border-focus: #6b6a65;
+      --text-primary: #e8e6e0;
+      --text-secondary: #8a8880;
+      --text-muted: #56554f;
+      --text-faint: #3d3c38;
+      --accent: #c96442;
+      --done-text: #4a4945;
+      --radius: 10px;
+      --gap: 7px;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 99px; border: none; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    * { scrollbar-width: thin; scrollbar-color: var(--border-focus) transparent; }
+
+    html { overflow-y: scroll; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: 'Lora', Georgia, serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 20px 160px;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.012'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 580px;
+      position: relative;
+      z-index: 1;
+    }
+
+    #task-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+      position: relative;
+    }
+
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 11px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      position: relative;
+      user-select: none;
+      animation: slideIn 0.18s ease;
+      transition: transform 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  background 0.15s, border-color 0.15s, opacity 0.15s, box-shadow 0.15s;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .task-item:hover        { background: var(--surface-hover); border-color: var(--border); }
+    .task-item.done         { opacity: 0.42; }
+    .task-item.is-dragging  {
+      transition: box-shadow 0.15s, opacity 0.15s;
+      z-index: 10;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+      border-color: var(--border-focus);
+      background: var(--surface-hover);
+      cursor: grabbing;
+    }
+
+    .task-label {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      outline: none;
+      cursor: text;
+      display: inline-block;
+      min-width: 2ch;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .task-label:empty::before {
+      content: 'Task name…';
+      color: var(--text-faint);
+      pointer-events: none;
+    }
+
+    .task-item.done .task-label { color: var(--done-text); pointer-events: none; }
+
+    .delete-btn {
+      opacity: 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 2px 3px;
+      border-radius: 4px;
+      transition: opacity 0.15s, color 0.15s;
+      line-height: 1;
+      margin-top: 2px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      margin-left: auto;
+    }
+
+    .task-item:hover .delete-btn { opacity: 1; }
+    .delete-btn:hover { color: var(--accent); }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 16px 0 4px;
+      color: var(--text-faint);
+      font-size: 10.5px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-subtle);
+    }
+
+    .add-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 11px 14px;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+      cursor: pointer;
+      background: none;
+      transition: border-color 0.15s;
+      user-select: none;
+      width: 100%;
+    }
+
+    .add-row:hover { border-color: var(--border-subtle); }
+    .add-row:hover .plus-icon { color: var(--text-secondary); }
+
+    .plus-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-faint);
+      transition: color 0.15s;
+    }
+
+    .version {
+      position: fixed;
+      bottom: 16px;
+      right: 20px;
+      font-size: 10px;
+      color: var(--text-faint);
+      letter-spacing: 0.06em;
+      pointer-events: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div id="task-list"></div>
+</div>
+<span class="version">v1.3</span>
+
+<script>
+  const STORAGE_KEY = 'tasks-v3';
+  let tasks = [];
+
+  /* ── Helpers ── */
+  const list      = document.getElementById('task-list');
+  const findTask  = id => tasks.find(t => t.id === id);
+  const makeEl    = (tag, cls) => Object.assign(document.createElement(tag), { className: cls });
+
+  function saveAndRender() { save(); render(); }
+  function load()  { try { const r = localStorage.getItem(STORAGE_KEY); if (r) tasks = JSON.parse(r); } catch {} }
+  function save()  { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
+
+  /* ── Task actions ── */
+  function addTask() {
+    const id = Date.now();
+    const lastActiveIdx = tasks.reduce((last, t, i) => !t.done ? i : last, -1);
+    tasks.splice(lastActiveIdx + 1, 0, { id, text: 'New task', done: false });
+    saveAndRender();
+  }
+
+  function toggleTask(id) {
+    const t = findTask(id);
+    if (!t) return;
+    t.done = !t.done;
+    t.completedAt = t.done ? Date.now() : null;
+    saveAndRender();
+  }
+
+  function deleteTask(id) {
+    tasks = tasks.filter(t => t.id !== id);
+    saveAndRender();
+  }
+
+  function commitText(id, el) {
+    const trimmed = el.textContent.trim();
+    if (!trimmed) { tasks = tasks.filter(t => t.id !== id); saveAndRender(); return; }
+    const t = findTask(id);
+    if (t && t.text !== trimmed) { t.text = trimmed; save(); }
+  }
+
+  /* ── Drag ── */
+  const GAP            = 7;
+  const DRAG_THRESHOLD = 5;
+  let dragId = null, dragMoved = false, startY = 0;
+  let activeEls = [], dragIdx = 0, dragH = 0;
+
+  function onPointerMove(e) {
+    if (!dragId) return;
+    const dy = e.clientY - startY;
+    if (!dragMoved) {
+      if (Math.abs(dy) < DRAG_THRESHOLD) return;
+      dragMoved = true;
+      activeEls = [...list.querySelectorAll('.task-item:not(.done)')].map(el => ({
+        el, id: Number(el.dataset.id), origTop: el.getBoundingClientRect().top
+      }));
+      dragIdx = activeEls.findIndex(x => x.id === dragId);
+      dragH   = activeEls[dragIdx].el.getBoundingClientRect().height + GAP;
+      activeEls[dragIdx].el.classList.add('is-dragging');
+    }
+
+    activeEls[dragIdx].el.style.transform = `translateY(${dy}px)`;
+
+    const centre = activeEls[dragIdx].origTop + activeEls[dragIdx].el.getBoundingClientRect().height / 2 + dy;
+    let newIdx = 0;
+    for (let i = 0; i < activeEls.length; i++) {
+      if (i === dragIdx) continue;
+      const mid = activeEls[i].origTop + activeEls[i].el.getBoundingClientRect().height / 2;
+      if (mid < centre) newIdx = i < dragIdx ? i + 1 : i;
+    }
+    newIdx = Math.max(0, Math.min(activeEls.length - 1, newIdx));
+
+    activeEls.forEach((x, i) => {
+      if (i === dragIdx) return;
+      const shift = (dragIdx < newIdx && i > dragIdx && i <= newIdx) ? -dragH
+                  : (dragIdx > newIdx && i >= newIdx && i < dragIdx) ?  dragH : 0;
+      x.el.style.transform = `translateY(${shift}px)`;
+    });
+
+    activeEls[dragIdx]._newIdx = newIdx;
+  }
+
+  function onPointerUp() {
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup',   onPointerUp);
+
+    if (!dragMoved || !dragId) { dragId = null; return; }
+
+    const newIdx = activeEls[dragIdx]._newIdx ?? dragIdx;
+    activeEls.forEach(x => { x.el.style.transform = ''; x.el.classList.remove('is-dragging'); });
+
+    if (newIdx !== dragIdx) {
+      const activeIds = activeEls.map(x => x.id);
+      activeIds.splice(dragIdx, 1);
+      activeIds.splice(newIdx, 0, dragId);
+      tasks = [...activeIds.map(id => findTask(id)), ...tasks.filter(t => t.done)];
+      save();
+    }
+
+    dragId = null; dragMoved = false; activeEls = [];
+    render();
+  }
+
+  /* ── DOM builders ── */
+  function makeItem(task) {
+    const item = makeEl('div', 'task-item' + (task.done ? ' done' : ''));
+    item.dataset.id = task.id;
+
+    if (!task.done) {
+      item.addEventListener('pointerdown', e => {
+        if (e.target.closest('.task-label, .delete-btn')) return;
+        e.preventDefault();
+        dragId = task.id; dragMoved = false; startY = e.clientY;
+        item.setPointerCapture(e.pointerId);
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup',   onPointerUp);
+      });
+    }
+
+    item.addEventListener('click', () => { if (!dragMoved) toggleTask(task.id); });
+
+    const label = makeEl('span', 'task-label');
+    label.textContent = task.text;
+
+    if (!task.done) {
+      label.contentEditable = 'true';
+      label.spellcheck = false;
+      label.addEventListener('click',     e => e.stopPropagation());
+      label.addEventListener('mousedown', e => e.stopPropagation());
+      label.addEventListener('blur',    () => commitText(task.id, label));
+      label.addEventListener('keydown',   e => {
+        if (e.key === 'Enter')  { e.preventDefault(); label.blur(); }
+        if (e.key === 'Escape') { label.textContent = task.text; label.blur(); }
+      });
+      label.addEventListener('paste', e => {
+        e.preventDefault();
+        document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+      });
+    }
+
+    const del = makeEl('button', 'delete-btn');
+    del.setAttribute('aria-label', 'Delete task');
+    del.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+    del.addEventListener('click', e => { e.stopPropagation(); deleteTask(task.id); });
+
+    item.append(label, del);
+    return item;
+  }
+
+  function makeAddRow() {
+    const row = makeEl('div', 'add-row');
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-label', 'Add a new task');
+    row.innerHTML = `<span class="plus-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="8" y1="1.5" x2="8" y2="14.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>`;
+    row.addEventListener('click', addTask);
+    row.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); addTask(); } });
+    return row;
+  }
+
+  /* ── Render ── */
+  function render() {
+    list.innerHTML = '';
+    const active = tasks.filter(t => !t.done);
+    const done   = tasks.filter(t =>  t.done).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+
+    active.forEach(t => list.appendChild(makeItem(t)));
+    list.appendChild(makeAddRow());
+
+    if (done.length) {
+      const div = makeEl('div', 'divider');
+      div.textContent = 'Completed';
+      list.appendChild(div);
+      done.forEach(t => list.appendChild(makeItem(t)));
+    }
+  }
+
+  load();
+  render();
+</script>
+</body>
+</html>
