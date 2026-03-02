@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tasks</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -42,7 +42,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 32px 20px 160px;
+      padding: 32px 20px 320px;
     }
 
     body::before {
@@ -76,7 +76,6 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      cursor: pointer;
       position: relative;
       user-select: none;
       animation: slideIn 0.18s ease;
@@ -90,7 +89,8 @@
     }
 
     .task-item:hover        { background: var(--surface-hover); border-color: var(--border); }
-    .task-item.done         { opacity: 0.42; }
+    .task-item:not(.done) { cursor: grab; touch-action: none; }
+    .task-item.done        { cursor: pointer; opacity: 0.42; }
     .task-item.is-dragging  {
       transition: box-shadow 0.15s, opacity 0.15s;
       z-index: 10;
@@ -139,6 +139,11 @@
 
     .task-item:hover .delete-btn { opacity: 1; }
     .delete-btn:hover { color: var(--accent); }
+
+    @media (pointer: coarse) {
+      .delete-btn { opacity: 0.35; }
+      .delete-btn:active { color: var(--accent); }
+    }
 
     .divider {
       display: flex;
@@ -202,7 +207,7 @@
 <div class="container">
   <div id="task-list"></div>
 </div>
-<span class="version">v1.3</span>
+<span class="version">v2.2</span>
 
 <script>
   const STORAGE_KEY = 'tasks-v3';
@@ -248,31 +253,61 @@
   /* ── Drag ── */
   const GAP            = 7;
   const DRAG_THRESHOLD = 5;
-  let dragId = null, dragMoved = false, startY = 0;
-  let activeEls = [], dragIdx = 0, dragH = 0;
+  const SCROLL_ZONE    = 80;   // px from viewport edge that triggers auto-scroll
+  const SCROLL_MAX     = 12;   // max px scrolled per animation frame
 
-  function onPointerMove(e) {
-    if (!dragId) return;
-    const dy = e.clientY - startY;
-    if (!dragMoved) {
-      if (Math.abs(dy) < DRAG_THRESHOLD) return;
-      dragMoved = true;
-      activeEls = [...list.querySelectorAll('.task-item:not(.done)')].map(el => ({
-        el, id: Number(el.dataset.id), origTop: el.getBoundingClientRect().top
-      }));
-      dragIdx = activeEls.findIndex(x => x.id === dragId);
-      dragH   = activeEls[dragIdx].el.getBoundingClientRect().height + GAP;
-      activeEls[dragIdx].el.classList.add('is-dragging');
+  let dragId = null, dragMoved = false, startY = 0, startScrollY = 0;
+  let activeEls = [], dragIdx = 0, dragH = 0;
+  let lastClientY = 0, scrollRAF = null;
+
+  const BODY_PAD_BOTTOM = 320; // matches body padding-bottom — keeps auto-scroll out of dead space
+
+  function doAutoScroll() {
+    if (!dragId || !dragMoved) { scrollRAF = null; return; }
+    const vh  = window.innerHeight;
+    const docH = document.documentElement.scrollHeight;
+    const maxScroll = docH - vh - BODY_PAD_BOTTOM;
+    let speed = 0;
+    if (lastClientY < SCROLL_ZONE && window.scrollY > 0)
+      speed = -SCROLL_MAX * (1 - lastClientY / SCROLL_ZONE);
+    else if (lastClientY > vh - SCROLL_ZONE && window.scrollY < maxScroll)
+      speed =  SCROLL_MAX * (1 - (vh - lastClientY) / SCROLL_ZONE);
+    if (speed !== 0) {
+      window.scrollBy(0, speed);
+      updateDragPositions();
+      scrollRAF = requestAnimationFrame(doAutoScroll);
+    } else {
+      scrollRAF = null;
     }
+  }
+
+  function updateDragPositions() {
+    if (!dragMoved || dragIdx < 0) return;
+    const scrollDelta = window.scrollY - startScrollY;
+    const rawDy = (lastClientY - startY) + scrollDelta;
+
+    // Clamp: item top must not go above the first task's origTop
+    const dragH_el = activeEls[dragIdx].el.getBoundingClientRect().height;
+    const minDy = activeEls[0].origTop - activeEls[dragIdx].origTop;
+
+    // Clamp: item bottom must not go past top of the add-row.
+    // addRow.getBCR().top is a live viewport value — must add scrollDelta to match rawDy's space.
+    const addRow = list.querySelector('.add-row');
+    const maxDy = addRow
+      ? addRow.getBoundingClientRect().top - activeEls[dragIdx].origTop - dragH_el + scrollDelta - GAP
+      : Infinity;
+
+    const dy = Math.max(minDy, Math.min(maxDy, rawDy));
 
     activeEls[dragIdx].el.style.transform = `translateY(${dy}px)`;
 
-    const centre = activeEls[dragIdx].origTop + activeEls[dragIdx].el.getBoundingClientRect().height / 2 + dy;
+    // Hit-test uses rawDy (not clamped dy) so finger position — not visual clamp — drives ordering.
+    const dragCentre = activeEls[dragIdx].origTop - scrollDelta + dragH_el / 2 + rawDy;
     let newIdx = 0;
     for (let i = 0; i < activeEls.length; i++) {
       if (i === dragIdx) continue;
-      const mid = activeEls[i].origTop + activeEls[i].el.getBoundingClientRect().height / 2;
-      if (mid < centre) newIdx = i < dragIdx ? i + 1 : i;
+      const mid = activeEls[i].origTop - scrollDelta + activeEls[i].el.getBoundingClientRect().height / 2;
+      if (mid < dragCentre) newIdx = i < dragIdx ? i + 1 : i;
     }
     newIdx = Math.max(0, Math.min(activeEls.length - 1, newIdx));
 
@@ -286,9 +321,46 @@
     activeEls[dragIdx]._newIdx = newIdx;
   }
 
+  function onPointerMove(e) {
+    if (!dragId) return;
+    lastClientY = e.clientY;
+    const dy = lastClientY - startY;
+
+    if (!dragMoved) {
+      if (Math.abs(dy) < DRAG_THRESHOLD) return;
+      dragMoved = true;
+      startScrollY = window.scrollY;
+      activeEls = [...list.querySelectorAll('.task-item:not(.done)')].map(el => ({
+        el, id: Number(el.dataset.id), origTop: el.getBoundingClientRect().top
+      }));
+      dragIdx = activeEls.findIndex(x => x.id === dragId);
+      dragH   = activeEls[dragIdx].el.getBoundingClientRect().height + GAP;
+      activeEls[dragIdx].el.classList.add('is-dragging');
+    }
+
+    updateDragPositions();
+
+    // Only start auto-scroll loop when pointer is in a scroll zone
+    const vh = window.innerHeight;
+    const inScrollZone = lastClientY < SCROLL_ZONE || lastClientY > vh - SCROLL_ZONE;
+    if (inScrollZone && !scrollRAF) scrollRAF = requestAnimationFrame(doAutoScroll);
+  }
+
+  function cancelDrag() {
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup',   onPointerUp);
+    document.removeEventListener('pointercancel', cancelDrag);
+    if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
+    if (dragMoved) activeEls.forEach(x => { x.el.style.transform = ''; x.el.classList.remove('is-dragging'); });
+    dragId = null; dragMoved = false; activeEls = [];
+    render();
+  }
+
   function onPointerUp() {
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerup',   onPointerUp);
+    document.removeEventListener('pointercancel', cancelDrag);
+    if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
 
     if (!dragMoved || !dragId) { dragId = null; return; }
 
@@ -303,8 +375,12 @@
       save();
     }
 
-    dragId = null; dragMoved = false; activeEls = [];
+    dragId = null; activeEls = [];
     render();
+    // Defer reset so the browser's synthetic click (fired after pointerup) still
+    // sees dragMoved=true and doesn't accidentally toggle the just-dropped task.
+    // Done-task clicks arriving after this tick will correctly see dragMoved=false.
+    setTimeout(() => { dragMoved = false; }, 0);
   }
 
   /* ── DOM builders ── */
@@ -320,6 +396,7 @@
         item.setPointerCapture(e.pointerId);
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup',   onPointerUp);
+        document.addEventListener('pointercancel', cancelDrag);
       });
     }
 
@@ -340,7 +417,12 @@
       });
       label.addEventListener('paste', e => {
         e.preventDefault();
-        document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+        const text = e.clipboardData.getData('text/plain');
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        sel.deleteFromDocument();
+        sel.getRangeAt(0).insertNode(document.createTextNode(text));
+        sel.collapseToEnd();
       });
     }
 
