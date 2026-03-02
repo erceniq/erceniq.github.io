@@ -208,7 +208,7 @@
 <div class="container">
   <div id="task-list"></div>
 </div>
-<span class="version">v2.4</span>
+<span class="version">v2.5</span>
 
 <script>
   const STORAGE_KEY = 'tasks-v3';
@@ -259,15 +259,16 @@
 
   let dragId = null, dragMoved = false, startY = 0, startScrollY = 0;
   let activeEls = [], dragIdx = 0, dragH = 0;
-  let lastClientY = 0, scrollRAF = null;
+  let lastClientY = 0, scrollRAF = null, addRowAbsTop = 0;
 
   const BODY_PAD_BOTTOM = 320; // matches body padding-bottom — keeps auto-scroll out of dead space
 
   function doAutoScroll() {
     if (!dragId || !dragMoved) { scrollRAF = null; return; }
-    const vh  = window.innerHeight;
+    const vh   = window.innerHeight;
     const docH = document.documentElement.scrollHeight;
-    const maxScroll = docH - vh - BODY_PAD_BOTTOM;
+    // Stop scrolling down before the add-row disappears off the top of the visible area
+    const maxScroll = Math.min(docH - vh - BODY_PAD_BOTTOM, addRowAbsTop - SCROLL_ZONE);
     let speed = 0;
     if (lastClientY < SCROLL_ZONE && window.scrollY > 0)
       speed = -SCROLL_MAX * (1 - lastClientY / SCROLL_ZONE);
@@ -324,6 +325,7 @@
 
   function onPointerMove(e) {
     if (!dragId) return;
+    e.preventDefault(); // stops browser scroll on all mobile browsers incl. Firefox
     lastClientY = e.clientY;
     const dy = lastClientY - startY;
 
@@ -337,6 +339,8 @@
       dragIdx = activeEls.findIndex(x => x.id === dragId);
       dragH   = activeEls[dragIdx].el.getBoundingClientRect().height + GAP;
       activeEls[dragIdx].el.classList.add('is-dragging');
+      const addRow = list.querySelector('.add-row');
+      addRowAbsTop = addRow ? addRow.getBoundingClientRect().top + window.scrollY : Infinity;
     }
 
     updateDragPositions();
@@ -348,7 +352,7 @@
   }
 
   function cancelDrag() {
-    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointermove', onPointerMove, { passive: false });
     document.removeEventListener('pointerup',   onPointerUp);
     document.removeEventListener('pointercancel', cancelDrag);
     if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
@@ -358,7 +362,7 @@
   }
 
   function onPointerUp() {
-    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointermove', onPointerMove, { passive: false });
     document.removeEventListener('pointerup',   onPointerUp);
     document.removeEventListener('pointercancel', cancelDrag);
     if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
@@ -395,7 +399,7 @@
         e.preventDefault();
         dragId = task.id; dragMoved = false; startY = e.clientY;
         item.setPointerCapture(e.pointerId);
-        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointermove', onPointerMove, { passive: false });
         document.addEventListener('pointerup',   onPointerUp);
         document.addEventListener('pointercancel', cancelDrag);
       });
